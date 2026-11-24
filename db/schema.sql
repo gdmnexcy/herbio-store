@@ -1,14 +1,14 @@
 -- HERBIO commerce platform: one source of truth for the website, Mini App and product landings.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE TABLE admin_users (
+CREATE TABLE IF NOT EXISTS admin_users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE media_assets (
+CREATE TABLE IF NOT EXISTS media_assets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   filename TEXT NOT NULL,
   content_type TEXT NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE media_assets (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE products (
+CREATE TABLE IF NOT EXISTS products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   slug TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE products (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE landing_pages (
+CREATE TABLE IF NOT EXISTS landing_pages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   slug TEXT UNIQUE NOT NULL,
   product_id UUID REFERENCES products(id) ON DELETE SET NULL,
@@ -51,7 +51,7 @@ CREATE TABLE landing_pages (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE landing_blocks (
+CREATE TABLE IF NOT EXISTS landing_blocks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   landing_id UUID NOT NULL REFERENCES landing_pages(id) ON DELETE CASCADE,
   block_type TEXT NOT NULL CHECK (block_type IN ('benefits', 'ingredients', 'how_to_use', 'faq', 'reviews', 'rich_text')),
@@ -61,7 +61,7 @@ CREATE TABLE landing_blocks (
 );
 
 -- Meta credentials stay encrypted at rest. Their plaintext never travels to the browser.
-CREATE TABLE meta_integrations (
+CREATE TABLE IF NOT EXISTS meta_integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   landing_id UUID UNIQUE NOT NULL REFERENCES landing_pages(id) ON DELETE CASCADE,
   pixel_id TEXT NOT NULL,
@@ -72,7 +72,7 @@ CREATE TABLE meta_integrations (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE customers (
+CREATE TABLE IF NOT EXISTS customers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   telegram_user_id BIGINT UNIQUE,
   instagram_handle TEXT,
@@ -82,7 +82,7 @@ CREATE TABLE customers (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE orders (
+CREATE TABLE IF NOT EXISTS orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   public_id TEXT UNIQUE NOT NULL,
   customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
@@ -96,7 +96,7 @@ CREATE TABLE orders (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE order_items (
+CREATE TABLE IF NOT EXISTS order_items (
   order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   product_id UUID NOT NULL REFERENCES products(id),
   quantity INTEGER NOT NULL CHECK (quantity > 0),
@@ -104,5 +104,5 @@ CREATE TABLE order_items (
   PRIMARY KEY(order_id, product_id)
 );
 
-CREATE INDEX orders_landing_created_idx ON orders(landing_id, created_at DESC);
-CREATE INDEX landing_blocks_position_idx ON landing_blocks(landing_id, position);
+CREATE INDEX IF NOT EXISTS orders_landing_created_idx ON orders(landing_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS landing_blocks_position_idx ON landing_blocks(landing_id, position);
