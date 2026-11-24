@@ -31,6 +31,7 @@ Bun.serve({ port, async fetch(request) {
   await ready;
   const url = new URL(request.url);
   if (url.pathname === '/health') return new Response('ok');
+  if (url.pathname === '/') return Response.redirect(new URL('/admin', url), 302);
   if (url.pathname === '/admin') {
     if (!requireAdmin(request)) return new Response('Authentication required', { status: 401, headers: { 'www-authenticate': 'Basic realm="HERBIO Admin"' } });
     return new Response(adminPage, { headers: { 'content-type': 'text/html; charset=utf-8' } });
