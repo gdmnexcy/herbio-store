@@ -106,3 +106,10 @@ CREATE TABLE IF NOT EXISTS order_items (
 
 CREATE INDEX IF NOT EXISTS orders_landing_created_idx ON orders(landing_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS landing_blocks_position_idx ON landing_blocks(landing_id, position);
+
+INSERT INTO products (slug, name, category, short_description, format, note, price_kopecks) VALUES
+  ('collagen-peptides', 'Колагенові пептиди', 'Краса', 'Підтримка щоденного ритуалу краси.', 'Порошок · 300 г', 'Нейтральний смак', 119000),
+  ('spirulina', 'Спіруліна', 'Енергія', 'Рослинний комплекс на щодень.', 'Таблетки · 120 шт.', 'Рослинний комплекс', 79000),
+  ('magnesium', 'Магній', 'Баланс', 'Комфортний формат для щоденного раціону.', 'Капсули · 90 шт.', 'Для щоденного раціону', 69000),
+  ('peptide-complex', 'Пептидний комплекс', 'Догляд', 'Нова формула для цілісного ритуалу.', 'Капсули · 60 шт.', 'Нова формула', 149000)
+ON CONFLICT (slug) DO NOTHING;
