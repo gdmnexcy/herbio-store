@@ -43,6 +43,54 @@ const json = (data: unknown, status = 200) => Response.json(data, { status });
 const escape = (value: unknown) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]!));
 const landingMarkup = (landing: any, product: any, pixelId?: string) => html(landing.meta_title || landing.title, `<div class="bar">Безкоштовна доставка від 2 000 ₴ · Турбота — у вашому ритмі</div><main class="admin"><div class="brand">HERBIO</div><section class="hero"><p class="eyebrow">НАТУРАЛЬНИЙ WELLNESS</p><h1>${escape(landing.hero_title)}</h1><p class="muted">${escape(landing.hero_text)}</p><a class="button" href="#buy">${escape(landing.cta_label || 'Купити')}</a></section><section class="grid"><article class="card">${product?.image_id ? `<img src="/media/${escape(product.image_id)}" alt="${escape(product?.name || landing.title)}" style="width:100%;max-height:340px;object-fit:cover;border-radius:10px;margin-bottom:16px">` : ''}<p class="eyebrow">${escape(product?.category || 'HERBIO')}</p><h2>${escape(product?.name || landing.title)}</h2><p>${escape(product?.short_description || product?.description || '')}</p><p><strong>${product ? `${Number(product.price_kopecks / 100).toLocaleString('uk-UA')} ₴` : ''}</strong></p><button class="button" id="buy">${escape(landing.cta_label || 'Купити')}</button></article><article class="card"><p class="eyebrow">ПРОЗОРО</p><h2>Формула для вашого ритму</h2><p>Склад, формат та спосіб використання редагуються в адмінці.</p></article><article class="card"><p class="eyebrow">ДОСТАВКА</p><h2>Дбайливо до ваших дверей</h2><p>Безкоштовна доставка для замовлень від 2 000 ₴.</p></article></section></main>${pixelId ? `<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${escape(pixelId)}');fbq('track','PageView');fbq('track','ViewContent',{content_ids:['${escape(product?.slug || '')}'],content_type:'product',currency:'UAH',value:${Number(product?.price_kopecks || 0) / 100}});</script>` : ''}`);
 
+
+const tokenHash = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
+const loyaltyRate = (kopecks: number) => kopecks >= 5000000 ? 5 : kopecks >= 2500000 ? 4 : kopecks >= 1000000 ? 3 : kopecks >= 500000 ? 2 : kopecks >= 100000 ? 1 : 0;
+async function currentCustomer(request: Request) {
+  const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (!token) return null;
+  const { rows } = await db.query('SELECT c.* FROM auth_sessions s JOIN customers c ON c.id=s.customer_id WHERE s.token_hash=$1 AND s.expires_at>now()', [tokenHash(token)]);
+  if (!rows[0]) return null;
+  await db.query('UPDATE auth_sessions SET last_seen_at=now() WHERE token_hash=$1', [tokenHash(token)]);
+  return rows[0];
+}
+async function createCustomerSession(customerId: string) {
+  const token = crypto.randomBytes(32).toString('hex');
+  await db.query('INSERT INTO auth_sessions(customer_id,token_hash,expires_at) VALUES($1,$2,now()+interval \'30 days\')', [customerId, tokenHash(token)]);
+  return token;
+}
+async function customerSummary(customerId: string) {
+  const customer = (await db.query('SELECT * FROM customers WHERE id=$1', [customerId])).rows[0];
+  if (!customer) return null;
+  const spend = Number((await db.query("SELECT COALESCE(SUM(total_kopecks),0) AS total FROM orders WHERE customer_id=$1 AND status<>\'cancelled\'", [customerId])).rows[0].total || 0);
+  return { id:customer.id, name:customer.name, email:customer.email, emailVerified:Boolean(customer.email_verified_at), phone:customer.phone, telegramUsername:customer.telegram_username, telegramUserId:customer.telegram_user_id, totalSpent:Math.round(spend/100), loyaltyRate:loyaltyRate(spend), nextThreshold:[100000,500000,1000000,2500000,5000000].find(x=>spend<x) ? Math.round(([100000,500000,1000000,2500000,5000000].find(x=>spend<x)!-spend)/100) : null };
+}
+function telegramFromMiniApp(initData: string) {
+  const params = new URLSearchParams(initData); const hash = params.get('hash') || ''; params.delete('hash');
+  const token = process.env.TELEGRAM_BOT_TOKEN || ''; if (!token || !hash) return null;
+  const authDate = Number(params.get('auth_date') || 0); if (!authDate || Date.now()/1000-authDate > 86400) return null;
+  const check = Array.from(params.entries()).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>k+'='+v).join('\n');
+  const secret = crypto.createHmac('sha256','WebAppData').update(token).digest();
+  const actual = crypto.createHmac('sha256',secret).update(check).digest('hex');
+  if (actual.length !== hash.length || !crypto.timingSafeEqual(Buffer.from(actual),Buffer.from(hash))) return null;
+  try { return JSON.parse(params.get('user') || '{}'); } catch { return null; }
+}
+function telegramFromWidget(body: any) {
+  const token = process.env.TELEGRAM_BOT_TOKEN || ''; const hash=String(body.hash || ''); if (!token || !hash) return null;
+  const authDate=Number(body.auth_date||0); if(!authDate || Date.now()/1000-authDate>86400) return null;
+  const check=Object.entries(body).filter(([k])=>k!=='hash').sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>k+'='+String(v)).join('\n');
+  const secret=crypto.createHash('sha256').update(token).digest();
+  const actual=crypto.createHmac('sha256',secret).update(check).digest('hex');
+  if(actual.length!==hash.length || !crypto.timingSafeEqual(Buffer.from(actual),Buffer.from(hash)))return null;
+  return body;
+}
+async function upsertTelegramCustomer(user: any) {
+  if (!user?.id) return null;
+  const name=[user.first_name,user.last_name].filter(Boolean).join(' ');
+  const { rows }=await db.query('INSERT INTO customers(telegram_user_id,telegram_username,name,updated_at) VALUES($1,$2,$3,now()) ON CONFLICT(telegram_user_id) DO UPDATE SET telegram_username=EXCLUDED.telegram_username,name=COALESCE(NULLIF(EXCLUDED.name,\'\'),customers.name),updated_at=now() RETURNING *',[Number(user.id),user.username||null,name||null]);
+  return rows[0];
+}
+
 async function createProduct(body: any) {
   const slug = String(body.slug || body.name || '').toLowerCase().trim().replace(/[^a-z0-9а-яіїєґ]+/gi, '-').replace(/^-|-$/g, '');
   const { rows } = await db.query('INSERT INTO products(slug,name,category,short_description,description,format,note,price_kopecks,image_id,is_hot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *', [slug, body.name, body.category, body.shortDescription || '', body.description || '', body.format || '', body.note || '', Math.round(Number(body.price || 0) * 100), body.imageId || null, Boolean(body.isHot)]);
@@ -79,6 +127,59 @@ Bun.serve({ port, async fetch(request) {
     const productData = product ? { ...product, price: Math.round(product.price_kopecks/100), image_url: product.image_id ? new URL('/media/'+product.image_id,url).toString() : null } : null;
     const upsellData = upsells.map(p => ({ ...p, price:Math.round(p.price_kopecks/100), image_url:p.image_id ? new URL('/media/'+p.image_id,url).toString() : null }));
     return json({ landing:{...landing, hero_image_url:landing.hero_image_id ? new URL('/media/'+landing.hero_image_id,url).toString() : null}, product:productData, upsells:upsellData });
+  }
+
+  if (url.pathname === '/api/public/auth/settings' && request.method === 'GET') return json({ telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME || '', emailLoginEnabled: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM) });
+  if (url.pathname === '/api/public/auth/email/start' && request.method === 'POST') {
+    const b:any=await request.json().catch(()=>({})); const email=String(b.email||'').trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({error:'Вкажіть коректний email'},400);
+    if(!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) return json({error:'Email-вхід ще не налаштований. Скористайтеся Telegram.'},503);
+    const code=String(crypto.randomInt(100000,1000000));
+    await db.query('UPDATE email_login_codes SET consumed_at=now() WHERE lower(email)=lower($1) AND consumed_at IS NULL',[email]);
+    await db.query('INSERT INTO email_login_codes(email,code_hash,expires_at) VALUES($1,$2,now()+interval \'10 minutes\')',[email,tokenHash(code)]);
+    const sent=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:'Bearer '+process.env.RESEND_API_KEY,'content-type':'application/json'},body:JSON.stringify({from:process.env.EMAIL_FROM,to:[email],subject:'Код входу HERBIO',html:'<p>Ваш код входу до HERBIO: <strong style="font-size:24px;letter-spacing:4px">'+code+'</strong></p><p>Код дійсний 10 хвилин.</p>'})});
+    if(!sent.ok) return json({error:'Не вдалося надіслати код. Спробуйте Telegram-вхід.'},502);
+    return json({ok:true});
+  }
+  if (url.pathname === '/api/public/auth/email/verify' && request.method === 'POST') {
+    const b:any=await request.json().catch(()=>({}));const email=String(b.email||'').trim().toLowerCase(),code=String(b.code||'').trim();
+    const row=(await db.query('SELECT * FROM email_login_codes WHERE lower(email)=lower($1) AND code_hash=$2 AND consumed_at IS NULL AND expires_at>now() ORDER BY created_at DESC LIMIT 1',[email,tokenHash(code)])).rows[0];
+    if(!row)return json({error:'Код недійсний або прострочений'},400);
+    await db.query('UPDATE email_login_codes SET consumed_at=now() WHERE id=$1',[row.id]);
+    let customer=(await db.query('SELECT * FROM customers WHERE lower(email)=lower($1)',[email])).rows[0];
+    if(!customer) customer=(await db.query('INSERT INTO customers(email,email_verified_at,updated_at) VALUES($1,now(),now()) RETURNING *',[email])).rows[0];
+    else customer=(await db.query('UPDATE customers SET email_verified_at=now(),updated_at=now() WHERE id=$1 RETURNING *',[customer.id])).rows[0];
+    const token=await createCustomerSession(customer.id);return json({token,customer:await customerSummary(customer.id)});
+  }
+  if (url.pathname === '/api/public/auth/telegram' && request.method === 'POST') {
+    const b:any=await request.json().catch(()=>({}));const user=b.initData?telegramFromMiniApp(String(b.initData)):telegramFromWidget(b.user||b);
+    if(!user)return json({error:'Не вдалося підтвердити Telegram-вхід'},401);
+    const customer=await upsertTelegramCustomer(user);if(!customer)return json({error:'Не вдалося створити профіль'},400);
+    const token=await createCustomerSession(customer.id);return json({token,customer:await customerSummary(customer.id)});
+  }
+  if (url.pathname === '/api/public/auth/me' && request.method === 'GET') {
+    const customer=await currentCustomer(request);if(!customer)return json({error:'Unauthorized'},401);return json(await customerSummary(customer.id));
+  }
+  if (url.pathname === '/api/public/auth/logout' && request.method === 'POST') {
+    const token=(request.headers.get('authorization')||'').replace(/^Bearer\s+/i,'').trim();if(token)await db.query('DELETE FROM auth_sessions WHERE token_hash=$1',[tokenHash(token)]);return json({ok:true});
+  }
+  if (url.pathname === '/api/public/account/orders' && request.method === 'GET') {
+    const customer=await currentCustomer(request);if(!customer)return json({error:'Unauthorized'},401);
+    const {rows}=await db.query("SELECT o.public_id,o.status,o.total_kopecks,o.currency,o.created_at,COALESCE(json_agg(json_build_object('name',p.name,'quantity',oi.quantity,'price',oi.unit_price_kopecks)) FILTER (WHERE p.id IS NOT NULL),'[]') AS items FROM orders o LEFT JOIN order_items oi ON oi.order_id=o.id LEFT JOIN products p ON p.id=oi.product_id WHERE o.customer_id=$1 GROUP BY o.id ORDER BY o.created_at DESC",[customer.id]);
+    return json(rows.map(o=>({...o,total:Math.round(o.total_kopecks/100)})));
+  }
+  if (url.pathname === '/api/public/orders' && request.method === 'POST') {
+    const b:any=await request.json().catch(()=>({}));const productIds=Array.from(new Set((b.items||[]).map((x:any)=>String(x.productId||'')).filter(Boolean)));
+    if(!productIds.length)return json({error:'Кошик порожній'},400);
+    const {rows:products}=await db.query('SELECT id,name,price_kopecks FROM products WHERE id=ANY($1::uuid[]) AND active=true',[productIds]);
+    if(products.length!==productIds.length)return json({error:'Один із товарів недоступний'},400);
+    let customer=await currentCustomer(request);const c=b.customer||{};
+    if(customer) customer=(await db.query('UPDATE customers SET name=COALESCE(NULLIF($1,\'\'),name),phone=COALESCE(NULLIF($2,\'\'),phone),updated_at=now() WHERE id=$3 RETURNING *',[String(c.fullName||''),String(c.phone||''),customer.id])).rows[0];
+    else customer=(await db.query('INSERT INTO customers(name,phone,updated_at) VALUES($1,$2,now()) RETURNING *',[String(c.fullName||''),String(c.phone||'')])).rows[0];
+    const total=products.reduce((sum,p)=>sum+Number(p.price_kopecks),0);const profile=await customerSummary(customer.id);const publicId='HB-'+crypto.randomUUID().slice(0,8).toUpperCase();
+    const order=(await db.query("INSERT INTO orders(public_id,customer_id,source,total_kopecks,meta_event_id,full_name,phone,nova_poshta_branch,loyalty_rate) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,public_id",[publicId,customer.id,b.telegramInitData?'telegram':'web',total,crypto.randomUUID(),String(c.fullName||''),String(c.phone||''),String(c.novaPoshtaBranch||''),profile?.loyaltyRate||0])).rows[0];
+    for(const p of products) await db.query('INSERT INTO order_items(order_id,product_id,quantity,unit_price_kopecks) VALUES($1,$2,1,$3)',[order.id,p.id,p.price_kopecks]);
+    return json({orderId:order.public_id,loyaltyRate:profile?.loyaltyRate||0},201);
   }
   if (url.pathname === '/') return Response.redirect(new URL('/admin', url), 302);
   if (url.pathname === '/admin') {
