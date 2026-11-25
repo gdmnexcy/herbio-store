@@ -125,6 +125,36 @@ CREATE TABLE IF NOT EXISTS order_items (
 CREATE INDEX IF NOT EXISTS orders_landing_created_idx ON orders(landing_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS landing_blocks_position_idx ON landing_blocks(landing_id, position);
 
+
+-- Customer authentication, verified identities, and loyalty state.
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS telegram_username TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS full_name TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS nova_poshta_branch TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS loyalty_rate SMALLINT NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique_idx ON customers (lower(email)) WHERE email IS NOT NULL;
+CREATE INDEX IF NOT EXISTS customers_telegram_idx ON customers (telegram_user_id);
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  token_hash TEXT UNIQUE NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auth_sessions_token_idx ON auth_sessions(token_hash);
+CREATE TABLE IF NOT EXISTS email_login_codes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL,
+  code_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS email_login_codes_email_idx ON email_login_codes(lower(email), created_at DESC);
+
 INSERT INTO products (slug, name, category, short_description, format, note, price_kopecks) VALUES
   ('collagen-peptides', 'Колагенові пептиди', 'Краса', 'Підтримка щоденного ритуалу краси.', 'Порошок · 300 г', 'Нейтральний смак', 119000),
   ('spirulina', 'Спіруліна', 'Енергія', 'Рослинний комплекс на щодень.', 'Таблетки · 120 шт.', 'Рослинний комплекс', 79000),
