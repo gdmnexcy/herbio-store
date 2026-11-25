@@ -63,6 +63,12 @@ Bun.serve({ port, async fetch(request) {
     const { rows } = await db.query('SELECT * FROM products WHERE active=true ORDER BY created_at ASC');
     return json(rows.map(p => ({ id:p.id, slug:p.slug, name:p.name, category:p.category, short_description:p.short_description, description:p.description, format:p.format, note:p.note, price:Math.round(p.price_kopecks/100), image_url:p.image_id ? new URL('/media/' + p.image_id, url).toString() : null })));
   }
+  const publicPageMatch = url.pathname.match(/^\/api\/public\/pages\/([a-z-]+)$/);
+  if (publicPageMatch && request.method === 'GET') {
+    const { rows } = await db.query('SELECT page_key,title,content,updated_at FROM content_pages WHERE page_key=$1', [publicPageMatch[1]]);
+    if (!rows[0]) return json({ error: 'Not found' }, 404);
+    return json(rows[0]);
+  }
   if (url.pathname === '/') return Response.redirect(new URL('/admin', url), 302);
   if (url.pathname === '/admin') {
     if (!requireAdmin(request)) return new Response('Authentication required', { status: 401, headers: { 'www-authenticate': 'Basic realm="HERBIO Admin"' } });
