@@ -60,6 +60,13 @@ CREATE TABLE IF NOT EXISTS landing_blocks (
   position INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS content_pages (
+  page_key TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  content JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Meta credentials stay encrypted at rest. Their plaintext never travels to the browser.
 CREATE TABLE IF NOT EXISTS meta_integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -113,3 +120,10 @@ INSERT INTO products (slug, name, category, short_description, format, note, pri
   ('magnesium', 'Магній', 'Баланс', 'Комфортний формат для щоденного раціону.', 'Капсули · 90 шт.', 'Для щоденного раціону', 69000),
   ('peptide-complex', 'Пептидний комплекс', 'Догляд', 'Нова формула для цілісного ритуалу.', 'Капсули · 60 шт.', 'Нова формула', 149000)
 ON CONFLICT (slug) DO NOTHING;
+
+INSERT INTO content_pages (page_key, title, content) VALUES
+('home', 'Головна', '{"eyebrow":"НАТУРАЛЬНИЙ WELLNESS","headline":"Підтримка, що стає ритуалом.","lead":"Усвідомлені формули для краси, енергії та балансу — без зайвого шуму.","cta":"Обрати свій ритуал"}'::jsonb),
+('about', 'Про HERBIO', '{"eyebrow":"ПРО HERBIO","headline":"Здоров’я та краса — щодня","lead":"Wellness-добавки для тих, хто обирає уважне ставлення до себе та своїх щоденних ритуалів."}'::jsonb),
+('delivery', 'Доставка', '{"eyebrow":"ДОСТАВКА HERBIO","headline":"Дбайливо до ваших дверей","lead":"Безкоштовна доставка для замовлень від 2 000 ₴."}'::jsonb),
+('policy', 'Політика', '{"eyebrow":"ПОЛІТИКА КОНФІДЕНЦІЙНОСТІ","headline":"Ваші дані — під захистом","lead":"Ми дбайливо ставимося до інформації, яку ви залишаєте під час замовлення."}'::jsonb)
+ON CONFLICT (page_key) DO NOTHING;
