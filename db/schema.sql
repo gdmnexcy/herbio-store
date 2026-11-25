@@ -53,6 +53,15 @@ CREATE TABLE IF NOT EXISTS landing_pages (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE landing_pages ADD COLUMN IF NOT EXISTS catalog_cta_label TEXT NOT NULL DEFAULT 'Переглянути каталог';
+ALTER TABLE landing_pages ADD COLUMN IF NOT EXISTS benefit_1_title TEXT NOT NULL DEFAULT '';
+ALTER TABLE landing_pages ADD COLUMN IF NOT EXISTS benefit_1_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE landing_pages ADD COLUMN IF NOT EXISTS benefit_2_title TEXT NOT NULL DEFAULT '';
+ALTER TABLE landing_pages ADD COLUMN IF NOT EXISTS benefit_2_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE landing_pages ADD COLUMN IF NOT EXISTS benefit_3_title TEXT NOT NULL DEFAULT '';
+ALTER TABLE landing_pages ADD COLUMN IF NOT EXISTS benefit_3_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE landing_pages ADD COLUMN IF NOT EXISTS upsell_product_ids UUID[] NOT NULL DEFAULT ARRAY[]::UUID[];
+
 CREATE TABLE IF NOT EXISTS landing_blocks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   landing_id UUID NOT NULL REFERENCES landing_pages(id) ON DELETE CASCADE,
