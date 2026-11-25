@@ -138,3 +138,8 @@ INSERT INTO content_pages (page_key, title, content) VALUES
 ('delivery', 'Доставка', '{"eyebrow":"ДОСТАВКА HERBIO","headline":"Дбайливо до ваших дверей","lead":"Безкоштовна доставка для замовлень від 2 000 ₴."}'::jsonb),
 ('policy', 'Політика', '{"eyebrow":"ПОЛІТИКА КОНФІДЕНЦІЙНОСТІ","headline":"Ваші дані — під захистом","lead":"Ми дбайливо ставимося до інформації, яку ви залишаєте під час замовлення."}'::jsonb)
 ON CONFLICT (page_key) DO NOTHING;
+INSERT INTO landing_pages (slug, product_id, title, meta_title, hero_title, hero_text, cta_label, catalog_cta_label, status, published_at)
+SELECT 'spirulina', id, 'Спіруліна', 'Спіруліна | HERBIO', 'Спіруліна для вашого щоденного ритму', 'Рослинний комплекс у зручному форматі на щодень.', 'Купити', 'Переглянути каталог', 'published', now()
+FROM products WHERE slug='spirulina'
+ON CONFLICT (slug) DO UPDATE SET status='published', published_at=COALESCE(landing_pages.published_at, now());
+
