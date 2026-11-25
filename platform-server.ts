@@ -132,14 +132,5 @@ Bun.serve({ port, async fetch(request) {
     return json({ error: 'Not found' }, 404);
   }
   if (url.pathname.startsWith('/l/')) return Response.redirect('https://herbio.store' + url.pathname, 302);
-
-    const slug = url.pathname.slice(3);
-    const result = await db.query('SELECT * FROM landing_pages WHERE slug=$1 AND status=$2', [slug, 'published']);
-    if (!result.rows[0]) return new Response('Landing not found', { status: 404 });
-    const landing = result.rows[0];
-    const product = landing.product_id ? (await db.query('SELECT * FROM products WHERE id=$1', [landing.product_id])).rows[0] : null;
-    const integration = (await db.query('SELECT pixel_id FROM meta_integrations WHERE landing_id=$1 AND enabled=true', [landing.id])).rows[0];
-    return new Response(landingMarkup(landing, product, integration?.pixel_id), { headers: { 'content-type': 'text/html; charset=utf-8' } });
-  }
   return json({ error: 'Not found' }, 404);
 }});
