@@ -134,7 +134,7 @@ Bun.serve({ port, async fetch(request) {
     const b:any=await request.json().catch(()=>({})); const email=String(b.email||'').trim().toLowerCase();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({error:'Вкажіть коректний email'},400);
     if(!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) return json({error:'Email-вхід ще не налаштований. Скористайтеся Telegram.'},503);
-    const code=String(crypto.randomInt(100000,1000000));
+    const codeBytes=new Uint32Array(1);crypto.getRandomValues(codeBytes);const code=String(100000+(codeBytes[0]%900000));
     await db.query('UPDATE email_login_codes SET consumed_at=now() WHERE lower(email)=lower($1) AND consumed_at IS NULL',[email]);
     await db.query('INSERT INTO email_login_codes(email,code_hash,expires_at) VALUES($1,$2,now()+interval \'10 minutes\')',[email,tokenHash(code)]);
     const sent=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:'Bearer '+process.env.RESEND_API_KEY,'content-type':'application/json'},body:JSON.stringify({from:process.env.EMAIL_FROM,to:[email],subject:'Код входу HERBIO',html:'<p>Ваш код входу до HERBIO: <strong style="font-size:24px;letter-spacing:4px">'+code+'</strong></p><p>Код дійсний 10 хвилин.</p>'})});
