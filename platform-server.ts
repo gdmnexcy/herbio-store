@@ -129,7 +129,7 @@ Bun.serve({ port, async fetch(request) {
     return json({ landing:{...landing, hero_image_url:landing.hero_image_id ? new URL('/media/'+landing.hero_image_id,url).toString() : null}, product:productData, upsells:upsellData });
   }
 
-  if (url.pathname === '/api/public/auth/settings' && request.method === 'GET') return json({ telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME || '', emailLoginEnabled: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM) });
+  if (url.pathname === '/api/public/auth/settings' && request.method === 'GET') { let telegramBotUsername=''; const botToken=process.env.TELEGRAM_BOT_TOKEN; if(botToken){try{const r=await fetch('https://api.telegram.org/bot'+botToken+'/getMe',{signal:AbortSignal.timeout(3000)});const d:any=await r.json();telegramBotUsername=d?.result?.username||''}catch{}} return json({ telegramBotUsername, emailLoginEnabled: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM) }); }
   if (url.pathname === '/api/public/auth/email/start' && request.method === 'POST') {
     const b:any=await request.json().catch(()=>({})); const email=String(b.email||'').trim().toLowerCase();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({error:'Вкажіть коректний email'},400);
