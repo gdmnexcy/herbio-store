@@ -129,6 +129,22 @@ Bun.serve({ port, async fetch(request) {
     return json({ landing:{...landing, hero_image_url:landing.hero_image_id ? new URL('/media/'+landing.hero_image_id,url).toString() : null}, product:productData, upsells:upsellData });
   }
 
+  if (url.pathname === '/api/public/telegram/webhook' && request.method === 'POST') {
+    const update:any=await request.json().catch(()=>({}));const message=update?.message;const text=String(message?.text||'');const match=text.match(/^\/start\s+login_([A-Za-z0-9_-]{20,})/);
+    if(match&&message?.from){const nonce=match[1];const row=(await db.query('SELECT * FROM telegram_login_requests WHERE nonce_hash=$1 AND customer_id IS NULL AND expires_at>now()',[tokenHash(nonce)])).rows[0];if(row){const customer=await upsertTelegramCustomer(message.from);await db.query('UPDATE telegram_login_requests SET customer_id=$1 WHERE id=$2',[customer.id,row.id]);const botToken=process.env.TELEGRAM_BOT_TOKEN||'';if(botToken)fetch('https://api.telegram.org/bot'+botToken+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:message.chat.id,text:'✅ Вхід до HERBIO підтверджено. Поверніться на сайт — кабінет відкриється автоматично.'})}).catch(()=>{});}}
+    return json({ok:true});
+  }
+  if (url.pathname === '/api/public/auth/telegram/start' && request.method === 'POST') {
+    const botToken=process.env.TELEGRAM_BOT_TOKEN||'';if(!botToken)return json({error:'Telegram-бот ще не підключений'},503);
+    const nonce=crypto.randomBytes(24).toString('base64url');await db.query('INSERT INTO telegram_login_requests(nonce_hash,expires_at) VALUES($1,now()+interval \'10 minutes\')',[tokenHash(nonce)]);
+    let username='herbioshop_bot';try{const d:any=await (await fetch('https://api.telegram.org/bot'+botToken+'/getMe',{signal:AbortSignal.timeout(3000)})).json();username=d?.result?.username||username}catch{}
+    return json({url:'https://t.me/'+username+'?start=login_'+nonce,expiresIn:600});
+  }
+  if (url.pathname === '/api/public/auth/telegram/status' && request.method === 'GET') {
+    const nonce=String(url.searchParams.get('nonce')||'');if(!nonce)return json({error:'Відсутній код входу'},400);
+    const row=(await db.query('SELECT * FROM telegram_login_requests WHERE nonce_hash=$1 AND expires_at>now()',[tokenHash(nonce)])).rows[0];if(!row)return json({error:'Вхід прострочено. Спробуйте ще раз.'},400);if(!row.customer_id)return json({pending:true});
+    if(row.consumed_at)return json({error:'Цей вхід вже використано'},400);await db.query('UPDATE telegram_login_requests SET consumed_at=now() WHERE id=$1',[row.id]);const token=await createCustomerSession(row.customer_id);return json({pending:false,token,customer:await customerSummary(row.customer_id)});
+  }
   if (url.pathname === '/api/public/auth/settings' && request.method === 'GET') { let telegramBotUsername=''; const botToken=process.env.TELEGRAM_BOT_TOKEN; if(botToken){try{const r=await fetch('https://api.telegram.org/bot'+botToken+'/getMe',{signal:AbortSignal.timeout(3000)});const d:any=await r.json();telegramBotUsername=d?.result?.username||''}catch{}} return json({ telegramBotUsername, emailLoginEnabled: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM) }); }
   if (url.pathname === '/api/public/auth/email/start' && request.method === 'POST') {
     const b:any=await request.json().catch(()=>({})); const email=String(b.email||'').trim().toLowerCase();
