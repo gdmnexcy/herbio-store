@@ -154,6 +154,16 @@ CREATE TABLE IF NOT EXISTS email_login_codes (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS email_login_codes_email_idx ON email_login_codes(lower(email), created_at DESC);
+CREATE TABLE IF NOT EXISTS telegram_login_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nonce_hash TEXT UNIQUE NOT NULL,
+  customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS telegram_login_requests_nonce_idx ON telegram_login_requests(nonce_hash);
+
 
 INSERT INTO products (slug, name, category, short_description, format, note, price_kopecks) VALUES
   ('collagen-peptides', 'Колагенові пептиди', 'Краса', 'Підтримка щоденного ритуалу краси.', 'Порошок · 300 г', 'Нейтральний смак', 119000),
