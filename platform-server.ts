@@ -186,16 +186,16 @@ Bun.serve({ port, async fetch(request) {
     return json(rows.map(o=>({...o,total:Math.round(o.total_kopecks/100)})));
   }
   if (url.pathname === '/api/public/orders' && request.method === 'POST') {
-    const b:any=await request.json().catch(()=>({}));const productIds=Array.from(new Set((b.items||[]).map((x:any)=>String(x.productId||'')).filter(Boolean)));
+    const b:any=await request.json().catch(()=>({}));const quantities=new Map<string,number>();for(const item of (b.items||[])){const id=String(item?.productId||'');const qty=Math.max(1,Math.min(99,Number(item?.quantity)||1));if(id)quantities.set(id,(quantities.get(id)||0)+qty)}const productIds=Array.from(quantities.keys());
     if(!productIds.length)return json({error:'Кошик порожній'},400);
     const {rows:products}=await db.query('SELECT id,name,price_kopecks FROM products WHERE id=ANY($1::uuid[]) AND active=true',[productIds]);
     if(products.length!==productIds.length)return json({error:'Один із товарів недоступний'},400);
     let customer=await currentCustomer(request);const c=b.customer||{};
     if(customer) customer=(await db.query('UPDATE customers SET name=COALESCE(NULLIF($1,\'\'),name),phone=COALESCE(NULLIF($2,\'\'),phone),updated_at=now() WHERE id=$3 RETURNING *',[String(c.fullName||''),String(c.phone||''),customer.id])).rows[0];
     else customer=(await db.query('INSERT INTO customers(name,phone,updated_at) VALUES($1,$2,now()) RETURNING *',[String(c.fullName||''),String(c.phone||'')])).rows[0];
-    const total=products.reduce((sum,p)=>sum+Number(p.price_kopecks),0);const profile=await customerSummary(customer.id);const publicId='HB-'+crypto.randomUUID().slice(0,8).toUpperCase();
+    const total=products.reduce((sum,p)=>sum+Number(p.price_kopecks)*(quantities.get(p.id)||1),0);const profile=await customerSummary(customer.id);const publicId='HB-'+crypto.randomUUID().slice(0,8).toUpperCase();
     const order=(await db.query("INSERT INTO orders(public_id,customer_id,source,total_kopecks,meta_event_id,full_name,phone,nova_poshta_branch,loyalty_rate) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,public_id",[publicId,customer.id,b.telegramInitData?'telegram':'web',total,crypto.randomUUID(),String(c.fullName||''),String(c.phone||''),String(c.novaPoshtaBranch||''),profile?.loyaltyRate||0])).rows[0];
-    for(const p of products) await db.query('INSERT INTO order_items(order_id,product_id,quantity,unit_price_kopecks) VALUES($1,$2,1,$3)',[order.id,p.id,p.price_kopecks]);
+    for(const p of products) await db.query('INSERT INTO order_items(order_id,product_id,quantity,unit_price_kopecks) VALUES($1,$2,$3,$4)',[order.id,p.id,quantities.get(p.id)||1,p.price_kopecks]);
     return json({orderId:order.public_id,loyaltyRate:profile?.loyaltyRate||0},201);
   }
   if (url.pathname === '/') return Response.redirect(new URL('/admin', url), 302);
