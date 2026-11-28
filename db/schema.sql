@@ -183,3 +183,13 @@ SELECT 'spirulina', id, 'Спіруліна', 'Спіруліна | HERBIO', 'С
 FROM products WHERE slug='spirulina'
 ON CONFLICT (slug) DO UPDATE SET status='published', published_at=COALESCE(landing_pages.published_at, now());
 
+
+-- Configurable Mini / Standart / Maxi packs per product.
+ALTER TABLE products ADD COLUMN IF NOT EXISTS variants JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_label TEXT NOT NULL DEFAULT '';
+DO $$ BEGIN
+  ALTER TABLE order_items DROP CONSTRAINT IF EXISTS order_items_pkey;
+  ALTER TABLE order_items ADD CONSTRAINT order_items_pkey PRIMARY KEY (order_id, product_id, variant_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
